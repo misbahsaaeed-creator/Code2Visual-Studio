@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Code-to-Visual Converter</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        },
+                        studio: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            border: '#334155',
+                            accent: '#38bdf8'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['Fira Code', 'Cascadia Code', 'JetBrains Mono', 'monospace'],
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts & FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        
+        /* Node highlight animation */
+        .node-active {
+            filter: drop-shadow(0 0 10px rgba(34, 197, 94, 0.75));
+            stroke: #22c55e !important;
+            stroke-width: 3px !important;
+        }
+
+        .line-active {
+            background-color: rgba(34, 197, 94, 0.18) !important;
+            border-left: 4px solid #22c55e !important;
+        }
+
+        .flow-line {
+            stroke-dasharray: 8;
+            animation: flowDash 20s linear infinite;
+        }
+
+        @keyframes flowDash {
+            to {
+                stroke-dashoffset: -100;
+            }
+        }
+    </style>
+</head>
+<body class="h-full bg-slate-900 text-slate-100 font-sans antialiased flex flex-col transition-colors duration-300" id="appBody">
+
+    <header class="h-16 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md px-4 lg:px-6 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center gap-3">
+            <button id="toggleSidebarBtn" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-colors" title="Toggle Presets Sidebar">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center text-slate-950 font-black text-lg shadow-lg shadow-emerald-500/20">
+                    <i class="fa-solid fa-diagram-project"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base md:text-lg tracking-tight bg-gradient-to-r from-slate-100 via-emerald-200 to-cyan-400 bg-clip-text text-transparent">
+                        Code2Visual Studio
+                    </h1>
+                    <p class="text-[10px] text-slate-400 font-medium -mt-1 hidden sm:block">Beginner Logic Simulator & Visualizer</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Language Selector & Controls -->
+        <div class="flex items-center gap-2 sm:gap-4">
+            <!-- Mode Switcher (Python / SQL) -->
+            <div class="bg-slate-900 p-1 rounded-xl border border-slate-800 flex items-center gap-1">
+                <button id="btnLangPython" onclick="setLanguage('python')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-500 text-slate-950 shadow-md">
+                    <i class="fa-brands fa-python mr-1"></i> Python
+                </button>
+                <button id="btnLangSQL" onclick="setLanguage('sql')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-database mr-1"></i> SQL
+                </button>
+            </div>
+
+            <!-- Export Flowchart Button -->
+            <button onclick="exportFlowchartSVG()" class="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition-colors">
+                <i class="fa-solid fa-download text-emerald-400"></i> Export SVG
+            </button>
+
+            <!-- Share Button -->
+            <button onclick="shareProject()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg transition-colors">
+                <i class="fa-solid fa-share-nodes"></i> Share
+            </button>
+
+            <!-- Light/Dark Mode Toggle -->
+            <button id="themeToggleBtn" onclick="toggleTheme()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 transition-colors" title="Toggle Theme">
+                <i class="fa-solid fa-sun" id="themeIcon"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Left Sidebar: Presets Library -->
+        <aside id="sidebar" class="w-64 bg-slate-950/95 border-r border-slate-800 flex flex-col transition-all duration-300 z-10 absolute lg:relative inset-y-0 left-0 -translate-x-full lg:translate-x-0 shadow-2xl lg:shadow-none">
+            <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <i class="fa-solid fa-book-bookmark text-emerald-400"></i> Code Examples
+                </h2>
+                <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-mono">Beginner</span>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-3 space-y-4">
+                <!-- Python Presets -->
+                <div id="pythonPresets">
+                    <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">Python Examples</p>
+                    <div class="space-y-1">
+                        <button onclick="loadPreset('py_if_else')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-slate-800/80 hover:text-emerald-400 transition-all flex items-center gap-2 group">
+                            <i class="fa-solid fa-code-branch text-slate-500 group-hover:text-emerald-400"></i> If / Else Conditional
+                        </button>
+                        <button onclick="loadPreset('py_for_loop')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-slate-800/80 hover:text-emerald-400 transition-all flex items-center gap-2 group">
+                            <i class="fa-solid fa-arrows-spin text-slate-500 group-hover:text-emerald-400"></i> For Loop Counter
+                        </button>
+                        <button onclick="loadPreset('py_while_loop')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-slate-800/80 hover:text-emerald-400 transition-all flex items-center gap-2 group">
+                            <i class="fa-solid fa-rotate text-slate-500 group-hover:text-emerald-400"></i> While Loop Breakdown
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SQL Presets -->
+                <div id="sqlPresets">
+                    <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 px-2">SQL Examples</p>
+                    <div class="space-y-1">
+                        <button onclick="loadPreset('sql_select_where')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-slate-800/80 hover:text-emerald-400 transition-all flex items-center gap-2 group">
+                            <i class="fa-solid fa-filter text-slate-500 group-hover:text-emerald-400"></i> SELECT & WHERE Query
+                        </button>
+                        <button onclick="loadPreset('sql_join')" class="w-full text-left px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-slate-800/80 hover:text-emerald-400 transition-all flex items-center gap-2 group">
+                            <i class="fa-solid fa-link text-slate-500 group-hover:text-emerald-400"></i> INNER JOIN Query
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-3 border-t border-slate-800 text-[11px] text-slate-500 text-center">
+                Select any code pattern above to visualize instantly.
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col md:flex-row overflow-hidden min-w-0">
+            
+            <!-- CODE EDITOR PANEL -->
+            <section class="w-full md:w-1/2 lg:w-[45%] border-r border-slate-800 flex flex-col bg-slate-900/60 min-h-[300px]">
+                <!-- Editor Toolbar -->
+                <div class="h-10 border-b border-slate-800 px-4 flex items-center justify-between bg-slate-950/40 shrink-0">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-terminal text-emerald-400 text-xs"></i>
+                        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Source Code</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="clearCode()" class="text-[11px] text-slate-400 hover:text-rose-400 transition-colors px-2 py-1 rounded hover:bg-slate-800">
+                            <i class="fa-solid fa-eraser mr-1"></i> Clear
+                        </button>
+                        <button onclick="processAndVisualize()" class="text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3 py-1 rounded-md transition-all shadow-md shadow-emerald-500/20 flex items-center gap-1">
+                            <i class="fa-solid fa-play text-[10px]"></i> Convert & Run
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Interactive Code View Container -->
+                <div class="flex-1 flex overflow-hidden relative font-mono text-xs sm:text-sm">
+                    <!-- Line Numbers -->
+                    <div id="lineNumbers" class="w-10 py-3 bg-slate-950/50 text-slate-600 text-right pr-2 select-none font-mono shrink-0 border-r border-slate-800/50">
+                        1
+                    </div>
+
+                    <!-- Line Highlight Overlay & Text Area -->
+                    <div class="flex-1 relative overflow-auto">
+                        <textarea id="codeTextarea" spellcheck="false" class="w-full h-full p-3 bg-transparent text-slate-200 resize-none outline-none leading-relaxed font-mono tracking-wide z-10 relative whitespace-pre" oninput="updateLineNumbers()"></textarea>
+                    </div>
+                </div>
+
+                <!-- Simulation Control Bar -->
+                <div class="border-t border-slate-800 p-3 bg-slate-950/70 shrink-0 flex flex-col gap-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-sliders text-emerald-400"></i> Simulator Controls
+                        </span>
+                        <span id="stepCounter" class="text-xs font-mono font-medium text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/50">
+                            Step: 0 / 0
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button id="btnPrev" onclick="stepPrev()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-backward-step"></i>
+                        </button>
+                        <button id="btnPlay" onclick="togglePlay()" class="flex-1 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
+                            <i class="fa-solid fa-play" id="playIcon"></i> <span id="playBtnText">Play Step-by-Step</span>
+                        </button>
+                        <button id="btnNext" onclick="stepNext()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-forward-step"></i>
+                        </button>
+                    </div>
+
+                    <!-- Speed Slider -->
+                    <div class="flex items-center gap-3 pt-1">
+                        <span class="text-[10px] text-slate-400 font-medium">Speed:</span>
+                        <input type="range" id="speedSlider" min="500" max="2500" value="1200" step="100" class="flex-1 accent-emerald-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+                        <span class="text-[10px] text-slate-400 font-mono" id="speedValue">1.2s</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="w-full md:w-1/2 lg:w-[55%] flex flex-col bg-slate-950 overflow-hidden">
+                <!-- Visualizer Header -->
+                <div class="h-10 border-b border-slate-800 px-4 flex items-center justify-between bg-slate-900/40 shrink-0">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-sitemap text-cyan-400 text-xs"></i>
+                        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Logic Flowchart Canvas</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="zoomCanvas(1.1)" class="p-1 px-2 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300" title="Zoom In">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                        <button onclick="zoomCanvas(0.9)" class="p-1 px-2 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300" title="Zoom Out">
+                            <i class="fa-solid fa-minus"></i>
+                        </button>
+                        <button onclick="resetCanvasZoom()" class="p-1 px-2 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300" title="Reset Zoom">
+                            <i class="fa-solid fa-arrows-to-dot"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SVG Diagram Canvas -->
+                <div class="flex-1 relative overflow-auto p-4 flex items-center justify-center bg-slate-950/80" id="canvasContainer">
+                    <svg id="svgCanvas" class="w-full h-full min-h-[320px] transition-transform duration-200" style="transform-origin: center center;">
+                        <!-- Dynamic Flowchart Elements Rendered via JavaScript -->
+                    </svg>
+                </div>
+
+                <div class="border-t border-slate-800 bg-slate-900/90 flex flex-col h-48 shrink-0">
+                    <!-- Tabs Bar -->
+                    <div class="flex items-center justify-between border-b border-slate-800 px-4 bg-slate-950/60">
+                        <div class="flex items-center gap-2">
+                            <button id="tabEng" onclick="switchLanguageTab('eng')" class="py-2 px-3 text-xs font-semibold border-b-2 border-emerald-400 text-emerald-400 transition-colors flex items-center gap-1.5">
+                                <i class="fa-solid fa-language"></i> English Explanation
+                            </button>
+                            <button id="tabUrdu" onclick="switchLanguageTab('urdu')" class="py-2 px-3 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5">
+                                <i class="fa-solid fa-comment-dots"></i> Roman Urdu (آسان اردو)
+                            </button>
+                        </div>
+                        <span id="activeConceptBadge" class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800/50">
+                            Ready
+                        </span>
+                    </div>
+
+                    <!-- Explanation Content Display -->
+                    <div class="p-4 flex-1 overflow-y-auto">
+                        <!-- English Content -->
+                        <div id="contentEng" class="space-y-1.5">
+                            <h3 id="stepTitleEng" class="text-xs font-bold text-emerald-400 flex items-center gap-2">
+                                <i class="fa-solid fa-circle-info"></i> Welcome to Code2Visual Converter
+                            </h3>
+                            <p id="stepDescEng" class="text-xs text-slate-300 leading-relaxed">
+                                Paste Python or SQL code on the left editor and click <strong class="text-emerald-400">"Convert & Run"</strong>. The app will generate a flowchart and allow step-by-step logic execution!
+                            </p>
+                        </div>
+
+                        <!-- Roman Urdu Content -->
+                        <div id="contentUrdu" class="space-y-1.5 hidden">
+                            <h3 id="stepTitleUrdu" class="text-xs font-bold text-emerald-400 flex items-center gap-2">
+                                <i class="fa-solid fa-circle-info"></i> Xushamdeed!
+                            </h3>
+                            <p id="stepDescUrdu" class="text-xs text-slate-300 leading-relaxed">
+                                Baayein taraf apna code likhein aur <strong class="text-emerald-400">"Convert & Run"</strong> ka button dabayein. App aapke code ko flowchart aur aasan Urdu tashreeh me badal degi!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Notification Toast Modal -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-emerald-500 text-slate-950 px-4 py-2.5 rounded-xl font-bold text-xs shadow-2xl transition-all duration-300 transform translate-y-12 opacity-0 flex items-center gap-2 z-50">
+        <i class="fa-solid fa-circle-check"></i> <span id="toastMsg">Action completed successfully!</span>
+    </div>
+
+    <script>
+        // Preset Code Data
+        const PRESETS = {
+            py_if_else: `age = 18\nif age >= 18:\n    print("Eligible to Vote")\nelse:\n    print("Not Eligible")`,
+            py_for_loop: `numbers = [1, 2, 3]\nfor num in numbers:\n    print(num * 2)`,
+            py_while_loop: `count = 0\nwhile count < 3:\n    count += 1\n    print("Count is", count)`,
+            sql_select_where: `SELECT name, score\nFROM students\nWHERE score >= 80;`,
+            sql_join: `SELECT users.name, orders.amount\nFROM users\nINNER JOIN orders ON users.id = orders.user_id;`
+        };
+
+        // Application State
+        let currentLanguage = 'python';
+        let currentStep = 0;
+        let executionSteps = [];
+        let isPlaying = false;
+        let playInterval = null;
+        let currentZoom = 1;
+        let currentExplanationTab = 'eng';
+
+        // DOM Elements
+        const codeTextarea = document.getElementById('codeTextarea');
+        const lineNumbers = document.getElementById('lineNumbers');
+        const svgCanvas = document.getElementById('svgCanvas');
+        const sidebar = document.getElementById('sidebar');
+
+        // Initialization
+        window.onload = function () {
+            loadPreset('py_if_else');
+            setupEvents();
+        };
+
+        function setupEvents() {
+            document.getElementById('toggleSidebarBtn').addEventListener('click', () => {
+                sidebar.classList.toggle('-translate-x-full');
+            });
+
+            document.getElementById('speedSlider').addEventListener('input', (e) => {
+                document.getElementById('speedValue').textContent = (e.target.value / 1000).toFixed(1) + 's';
+                if (isPlaying) {
+                    stopPlay();
+                    startPlay();
+                }
+            });
+        }
+
+        function setLanguage(lang) {
+            currentLanguage = lang;
+            const btnPy = document.getElementById('btnLangPython');
+            const btnSql = document.getElementById('btnLangSQL');
+
+            if (lang === 'python') {
+                btnPy.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-500 text-slate-950 shadow-md";
+                btnSql.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-400 hover:text-slate-200";
+                loadPreset('py_if_else');
+            } else {
+                btnSql.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-cyan-500 text-slate-950 shadow-md";
+                btnPy.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-slate-400 hover:text-slate-200";
+                loadPreset('sql_select_where');
+            }
+        }
+
+        function loadPreset(key) {
+            if (PRESETS[key]) {
+                codeTextarea.value = PRESETS[key];
+                updateLineNumbers();
+                processAndVisualize();
+            }
+        }
+
+        function clearCode() {
+            codeTextarea.value = '';
+            updateLineNumbers();
+            executionSteps = [];
+            currentStep = 0;
+            renderEmptyCanvas();
+            updateStepDisplay();
+        }
+
+        function updateLineNumbers() {
+            const lines = codeTextarea.value.split('\n').length;
+            lineNumbers.innerHTML = Array.from({ length: lines }, (_, i) => i + 1).join('<br>');
+        }
+
+        function processAndVisualize() {
+            const code = codeTextarea.value.trim();
+            if (!code) return;
+
+            stopPlay();
+            currentStep = 0;
+            executionSteps = parseCodeToSteps(code, currentLanguage);
+            
+            renderFlowchartSVG(executionSteps);
+            updateStepDisplay();
+            showToast("Flowchart generated!");
+        }
+
+        function parseCodeToSteps(code, lang) {
+            const lines = code.split('\n');
+            const steps = [];
+
+            lines.forEach((line, idx) => {
+                const trimmed = line.trim();
+                if (!trimmed) return;
+
+                let stepObj = {
+                    lineNum: idx + 1,
+                    codeLine: trimmed,
+                    type: 'process',
+                    engTitle: `Step ${steps.length + 1}: Line ${idx + 1}`,
+                    engDesc: `Executing statement: "${trimmed}"`,
+                    urduTitle: `Step ${steps.length + 1}: Line ${idx + 1}`,
+                    urduDesc: `Is line par yeh statement chal rahi hai: "${trimmed}"`
+                };
+
+                // Python Rules
+                if (lang === 'python') {
+                    if (trimmed.startsWith('if') || trimmed.startsWith('elif') || trimmed.startsWith('while')) {
+                        stepObj.type = 'decision';
+                        stepObj.engDesc = `Condition check: Evaluates if condition (${trimmed}) is true or false.`;
+                        stepObj.urduDesc = `Shart (Condition) ki jaanch ho rahi hai ke kya (${trimmed}) sahi hai ya galat.`;
+                    } else if (trimmed.startsWith('for')) {
+                        stepObj.type = 'loop';
+                        stepObj.engDesc = `Loop initialization: Iterating over sequence elements.`;
+                        stepObj.urduDesc = `Loop shuru ho raha hai jo baari baari items par chalega.`;
+                    } else if (trimmed.startsWith('print')) {
+                        stepObj.type = 'output';
+                        stepObj.engDesc = `Output display: Printing calculated result to console.`;
+                        stepObj.urduDesc = `Output dikhaya ja raha hai screen/console par.`;
+                    }
+                } 
+                // SQL Rules
+                else {
+                    if (trimmed.toUpperCase().startsWith('SELECT')) {
+                        stepObj.type = 'process';
+                        stepObj.engDesc = `Selection: Choosing columns to retrieve from database.`;
+                        stepObj.urduDesc = `Database se kon se columns chahiye, unhe select kiya ja raha hai.`;
+                    } else if (trimmed.toUpperCase().startsWith('FROM') || trimmed.toUpperCase().startsWith('JOIN') || trimmed.toUpperCase().startsWith('INNER JOIN')) {
+                        stepObj.type = 'loop';
+                        stepObj.engDesc = `Data Source: Specifying target tables and relations.`;
+                        stepObj.urduDesc = `Data kis table ya tables se lana hai, uski nishandahi.`;
+                    } else if (trimmed.toUpperCase().startsWith('WHERE')) {
+                        stepObj.type = 'decision';
+                        stepObj.engDesc = `Filter Condition: Filtering records matching criteria.`;
+                        stepObj.urduDesc = `WHERE ki shart ke mutabiq records ko filter kiya ja raha hai.`;
+                    }
+                }
+
+                steps.push(stepObj);
+            });
+
+            return steps;
+        }
+
+        function renderFlowchartSVG(steps) {
+            if (!steps || steps.length === 0) {
+                renderEmptyCanvas();
+                return;
+            }
+
+            const startY = 40;
+            const gapY = 80;
+            const centerX = 200;
+
+            let svgContent = `
+                <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+                    </marker>
+                </defs>
+            `;
+
+            // Render Flow Arrows First
+            for (let i = 0; i < steps.length - 1; i++) {
+                const y1 = startY + (i * gapY) + 25;
+                const y2 = startY + ((i + 1) * gapY) - 25;
+                svgContent += `<line x1="${centerX}" y1="${y1}" x2="${centerX}" y2="${y2}" stroke="#475569" stroke-width="2" marker-end="url(#arrow)" class="flow-line"/>`;
+            }
+
+            // Render Nodes
+            steps.forEach((step, i) => {
+                const y = startY + (i * gapY);
+                const nodeClass = i === currentStep ? 'node-active' : '';
+
+                if (step.type === 'decision') {
+                    // Diamond Shape
+                    svgContent += `
+                        <g id="node-${i}" class="transition-all duration-300">
+                            <polygon points="${centerX},${y - 25} ${centerX + 70},${y} ${centerX},${y + 25} ${centerX - 70},${y}" fill="#1e293b" stroke="#38bdf8" stroke-width="2" class="${nodeClass}"/>
+                            <text x="${centerX}" y="${y + 4}" fill="#f8fafc" font-size="11" font-family="monospace" text-anchor="middle" font-weight="bold">${escapeXml(step.codeLine.substring(0, 16))}</text>
+                        </g>
+                    `;
+                } else if (step.type === 'output') {
+                    // Parallelogram Shape
+                    svgContent += `
+                        <g id="node-${i}" class="transition-all duration-300">
+                            <polygon points="${centerX - 60},${y - 20} ${centerX + 70},${y - 20} ${centerX + 50},${y + 20} ${centerX - 80},${y + 20}" fill="#1e293b" stroke="#a855f7" stroke-width="2" class="${nodeClass}"/>
+                            <text x="${centerX - 5}" y="${y + 4}" fill="#f8fafc" font-size="11" font-family="monospace" text-anchor="middle" font-weight="bold">${escapeXml(step.codeLine.substring(0, 16))}</text>
+                        </g>
+                    `;
+                } else {
+                    // Rounded Rectangle Shape
+                    svgContent += `
+                        <g id="node-${i}" class="transition-all duration-300">
+                            <rect x="${centerX - 70}" y="${y - 20}" width="140" height="40" rx="8" fill="#1e293b" stroke="#22c55e" stroke-width="2" class="${nodeClass}"/>
+                            <text x="${centerX}" y="${y + 4}" fill="#f8fafc" font-size="11" font-family="monospace" text-anchor="middle" font-weight="bold">${escapeXml(step.codeLine.substring(0, 16))}</text>
+                        </g>
+                    `;
+                }
+            });
+
+            const totalHeight = startY + (steps.length * gapY) + 20;
+            svgCanvas.setAttribute('viewBox', `0 0 400 ${Math.max(totalHeight, 320)}`);
+            svgCanvas.innerHTML = svgContent;
+        }
+
+        function renderEmptyCanvas() {
+            svgCanvas.setAttribute('viewBox', '0 0 400 300');
+            svgCanvas.innerHTML = `
+                <text x="200" y="150" fill="#64748b" font-size="12" text-anchor="middle">
+                    No active logic flowchart. Click "Convert & Run".
+                </text>
+            `;
+        }
+
+        function updateStepDisplay() {
+            const total = executionSteps.length;
+            document.getElementById('stepCounter').textContent = `Step: ${total > 0 ? currentStep + 1 : 0} / ${total}`;
+
+            document.getElementById('btnPrev').disabled = currentStep <= 0;
+            document.getElementById('btnNext').disabled = currentStep >= total - 1;
+
+            if (total === 0) return;
+
+            const step = executionSteps[currentStep];
+
+            // Highlight node in SVG
+            renderFlowchartSVG(executionSteps);
+
+            // Update Dual Language Explanations
+            document.getElementById('stepTitleEng').innerHTML = `<i class="fa-solid fa-circle-info"></i> ${step.engTitle}`;
+            document.getElementById('stepDescEng').textContent = step.engDesc;
+
+            document.getElementById('stepTitleUrdu').innerHTML = `<i class="fa-solid fa-circle-info"></i> ${step.urduTitle}`;
+            document.getElementById('stepDescUrdu').textContent = step.urduDesc;
+
+            document.getElementById('activeConceptBadge').textContent = step.type.toUpperCase();
+        }
+
+        function stepNext() {
+            if (currentStep < executionSteps.length - 1) {
+                currentStep++;
+                updateStepDisplay();
+            } else {
+                stopPlay();
+            }
+        }
+
+        function stepPrev() {
+            if (currentStep > 0) {
+                currentStep--;
+                updateStepDisplay();
+            }
+        }
+
+        function togglePlay() {
+            if (isPlaying) {
+                stopPlay();
+            } else {
+                startPlay();
+            }
+        }
+
+        function startPlay() {
+            if (executionSteps.length === 0) return;
+            isPlaying = true;
+            document.getElementById('playIcon').className = 'fa-solid fa-pause';
+            document.getElementById('playBtnText').textContent = 'Pause';
+
+            const speed = parseInt(document.getElementById('speedSlider').value);
+            playInterval = setInterval(() => {
+                if (currentStep < executionSteps.length - 1) {
+                    stepNext();
+                } else {
+                    currentStep = 0; // Loop back
+                    updateStepDisplay();
+                }
+            }, speed);
+        }
+
+        function stopPlay() {
+            isPlaying = false;
+            clearInterval(playInterval);
+            document.getElementById('playIcon').className = 'fa-solid fa-play';
+            document.getElementById('playBtnText').textContent = 'Play Step-by-Step';
+        }
+
+        function switchLanguageTab(tab) {
+            currentExplanationTab = tab;
+            const tabEng = document.getElementById('tabEng');
+            const tabUrdu = document.getElementById('tabUrdu');
+            const contentEng = document.getElementById('contentEng');
+            const contentUrdu = document.getElementById('contentUrdu');
+
+            if (tab === 'eng') {
+                tabEng.className = 'py-2 px-3 text-xs font-semibold border-b-2 border-emerald-400 text-emerald-400 transition-colors flex items-center gap-1.5';
+                tabUrdu.className = 'py-2 px-3 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5';
+                contentEng.classList.remove('hidden');
+                contentUrdu.classList.add('hidden');
+            } else {
+                tabUrdu.className = 'py-2 px-3 text-xs font-semibold border-b-2 border-emerald-400 text-emerald-400 transition-colors flex items-center gap-1.5';
+                tabEng.className = 'py-2 px-3 text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5';
+                contentUrdu.classList.remove('hidden');
+                contentEng.classList.add('hidden');
+            }
+        }
+
+        function zoomCanvas(factor) {
+            currentZoom *= factor;
+            svgCanvas.style.transform = `scale(${currentZoom})`;
+        }
+
+        function resetCanvasZoom() {
+            currentZoom = 1;
+            svgCanvas.style.transform = `scale(1)`;
+        }
+
+        function toggleTheme() {
+            const body = document.getElementById('appBody');
+            const themeIcon = document.getElementById('themeIcon');
+            if (body.classList.contains('light-mode')) {
+                body.classList.remove('light-mode');
+                themeIcon.className = 'fa-solid fa-sun';
+                showToast('Dark Mode Enabled');
+            } else {
+                body.classList.add('light-mode');
+                themeIcon.className = 'fa-solid fa-moon';
+                showToast('Light Mode Enabled');
+            }
+        }
+
+        function exportFlowchartSVG() {
+            const svgData = new XMLSerializer().serializeToString(svgCanvas);
+            const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `flowchart-${currentLanguage}.svg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Flowchart exported as SVG!');
+        }
+
+        function shareProject() {
+            const code = encodeURIComponent(codeTextarea.value);
+            const dummyUrl = window.location.origin + window.location.pathname + `?lang=${currentLanguage}&code=${code}`;
+            
+            // Clipboard fallback
+            const tempInput = document.createElement('input');
+            document.body.appendChild(tempInput);
+            tempInput.value = dummyUrl;
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            showToast('Project link copied to clipboard!');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').textContent = msg;
+            toast.classList.remove('translate-y-12', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-12', 'opacity-0');
+            }, 2500);
+        }
+
+        function escapeXml(unsafe) {
+            return unsafe.replace(/[<>&'"]/g, (c) => {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case '\'': return '&apos;';
+                    case '"': return '&quot;';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
